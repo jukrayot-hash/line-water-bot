@@ -64,7 +64,7 @@ ${thaiDateStr} สรุปภาพรวมสถานการณ์น้�
 * ปริมาณฝนสะสม 24 ชั่วโมง: [วิเคราะห์จากภาพ]
 * แนวโน้มระดับน้ำและการคาดการณ์: ทรงตัวและเฝ้าระวังอย่างใกล้ชิด`;
 
-    // เรียกใช้งาน Groq API (รองรับโมเดลวิสัยทัศน์เช่น llama-3.2-11b-vision-preview)
+    // ใช้โมเดลปัจจุบันของ Groq ที่รองรับ
     const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -72,7 +72,7 @@ ${thaiDateStr} สรุปภาพรวมสถานการณ์น้�
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: "llama-3.2-11b-vision-preview",
+        model: "qwen/qwen3.8-27b", // เปลี่ยนมาใช้โมเดลปัจจุบันที่รองรับมัลติมีเดีย/วิสัยทัศน์
         messages: [
           {
             role: "user",
