@@ -1,16 +1,13 @@
 const express = require('express');
 const line = require('@line/bot-sdk');
 const fetch = require('node-fetch');
-const { GoogleGenAI } = require('@google/genai');
 
-// ตั้งค่า LINE Secret และ Token
 const lineConfig = {
   channelAccessToken: "pikOSiC2zLbWGKEgVC4V+mdBd90Ly8wXYy4lNtzwvDJaFBCCaxJ3pP2Baz9URzpZ4xLQ3slkGEdkdVCxRQcB6/OjWrbNlrnjp5cgwECvjgjyUtA9nyIzoRuj62AS2ljDQ3Kun5Oo8NYKjamuei1OrAdB04t89/1O/w1cDnyilFU=",
-  channelSecret: "YOUR_LINE_CHANNEL_SECRET" // ใส่ Channel Secret ของคุณจากหน้า LINE Developers
+  channelSecret: "YOUR_LINE_CHANNEL_SECRET" // ใส่ Channel Secret ของคุณ
 };
 
-// ตั้งค่า Gemini API Key
-const ai = new GoogleGenAI({ apiKey: "AQ.Ab8RN6JR_GBqd-GNiir4e5xw1wE-a8C87jTpEHt5t7yZnLyNXg" });
+const GEMINI_API_KEY = "AQ.Ab8RN6JR_GBqd-GNiir4e5xw1wE-a8C87jTpEHt5t7yZnLyNXg";
 
 const app = express();
 
@@ -34,13 +31,11 @@ async function handleEvent(event) {
   const messageId = event.message.id;
 
   try {
-    // 1. ตอบกลับบอกผู้ใช้ว่ากำลังประมวลผลทันที (ป้องกัน Timeout)
     await client.replyMessage(replyToken, {
       type: 'text',
       text: '🔄 ระบบกำลังดึงภาพและวิเคราะห์สถานการณ์น้ำ กรุณารอสักครู่...'
     });
 
-    // 2. ดาวน์โหลดรูปภาพจาก LINE เป็น Buffer
     const stream = await client.getMessageContent(messageId);
     let chunks = [];
     for await (const chunk of stream) {
@@ -49,7 +44,6 @@ async function handleEvent(event) {
     const buffer = Buffer.concat(chunks);
     const base64Image = buffer.toString('base64');
 
-    // 3. เตรียม Prompt และวันที่ภาษาไทย
     const now = new Date();
     const yearBE = now.getFullYear() + 543;
     const months = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
@@ -79,23 +73,24 @@ ${thaiDateStr} สรุปภาพรวมสถานการณ์น้�
 
 บทสรุปการบริหารจัดการน้ำและแนวทางการปฏิบัติงานในพื้นที่สำหรับเจ้าหน้าที่ เน้นย้ำให้หน่วยงานและเจ้าหน้าที่ผู้ปฏิบัติงานในพื้นที่ติดตามสถานการณ์น้ำและปริมาณฝนสะสมอย่างใกล้ชิดตลอด 24 ชั่วโมง โดยเฉพาะในพื้นที่ที่มีฝนสะสมเกิน 50 มิลลิเมตร พร้อมทั้งตรวจสอบความพร้อมของเครื่องมือ อุปกรณ์ระบายน้ำ และระบบเตือนภัยให้พร้อมใช้งาน เพื่อให้สามารถแจ้งเตือนประชาชนในพื้นที่เสี่ยงภัยริมลำน้ำได้อย่างทันท่วงทีและมีประสิทธิภาพสูงสุด`;
 
-    // 4. เรียกใช้ Gemini API ผ่าน SDK ทางการ
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        { text: systemPrompt },
-        {
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: base64Image
-          }
-        }
-      ]
+    // ยิงตรงหา Gemini API แบบเสถียร
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const aiResponse = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: systemPrompt },
+            { inline_data: { mime_type: 'image/jpeg', data: base64Image } }
+          ]
+        }]
+      })
     });
 
-    const aiReport = response.text;
+    const aiData = await aiResponse.json();
+    const aiReport = aiData.candidates?.[0]?.content?.parts?.[0]?.text || "⚠ ไม่สามารถวิเคราะห์ข้อมูลจากภาพได้";
 
-    // 5. ส่งรายงานกลับหาผู้ใช้ผ่าน Push Message
     await client.pushMessage(event.source.userId, {
       type: 'text',
       text: aiReport
@@ -105,7 +100,7 @@ ${thaiDateStr} สรุปภาพรวมสถานการณ์น้�
     console.error("Error processing image:", error);
     await client.pushMessage(event.source.userId, {
       type: 'text',
-      text: '⚠️️ เกิดข้อผิดพลาดในการประมวลผลภาพถ่าย กรุณาลองส่งใหม่อีกครั้ง'
+      text: '⚠ เกิดข้อผิดพลาดในการประมวลผลภาพถ่าย กรุณาลองส่งใหม่อีกครั้ง'
     });
   }
 }
