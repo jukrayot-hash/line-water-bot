@@ -184,7 +184,7 @@ ${thaiDateStr} รายงานสถานการณ์น้ำแบบ�
       text: '⚠ เกิดข้อผิดพลาดในการประมวลผลชุดภาพถ่าย กรุณาลองส่งใหม่อีกครั้ง'
     });
   }
-}}const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
