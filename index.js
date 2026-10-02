@@ -12,12 +12,11 @@ const GROQ_API_KEY = "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";
 
 const app = express();
 
-// ตัวแปรเก็บภาพชั่วคราวแยกตาม User เพื่อรอรวมร่าง (Batching)
 const userImageBuffers = {};
 const userTimeouts = {};
 
 app.post('/webhook', line.middleware(lineConfig), (req, res) => {
-  res.status(200).end(); // ตอบรับ LINE Server ก่อนทันทีเพื่อป้องกัน Timeout
+  res.status(200).end();
 
   req.body.events.forEach(async (event) => {
     if (event.type === 'message' && event.message.type === 'image') {
@@ -27,7 +26,6 @@ app.post('/webhook', line.middleware(lineConfig), (req, res) => {
       const client = new line.Client(lineConfig);
 
       try {
-        // ดาวน์โหลดรูปภาพแปลงเป็น Base64
         const stream = await client.getMessageContent(messageId);
         let chunks = [];
         for await (const chunk of stream) {
@@ -36,15 +34,12 @@ app.post('/webhook', line.middleware(lineConfig), (req, res) => {
         const buffer = Buffer.concat(chunks);
         const base64Image = buffer.toString('base64');
 
-        // ถ้ายังไม่มีอาเรย์ของ User นี้ ให้สร้างขึ้นมา
         if (!userImageBuffers[userId]) {
           userImageBuffers[userId] = [];
         }
 
-        // เก็บภาพลงกองกลางของ User นี้
         userImageBuffers[userId].push(base64Image);
 
-        // แจ้งเตือนรอบแรกครั้งเดียวว่ากำลังรอรับรูปให้ครบ
         if (userImageBuffers[userId].length === 1) {
           await client.pushMessage(userId, {
             type: 'text',
@@ -52,7 +47,6 @@ app.post('/webhook', line.middleware(lineConfig), (req, res) => {
           });
         }
 
-        // เคลียร์ Timer เก่า และตั้งเวลาใหม่ (หน่วง 5 วินาทีเผื่อส่งหลายรูป)
         if (userTimeouts[userId]) {
           clearTimeout(userTimeouts[userId]);
         }
@@ -63,7 +57,7 @@ app.post('/webhook', line.middleware(lineConfig), (req, res) => {
           delete userTimeouts[userId];
 
           await processAndReplyImages(client, userId, imagesToProcess);
-        }, 5000); // รอ 5 วินาทีหลังจากรูปสุดท้ายถูกส่งเข้ามา
+        }, 5000);
 
       } catch (err) {
         console.error("Error downloading image:", err);
@@ -72,7 +66,6 @@ app.post('/webhook', line.middleware(lineConfig), (req, res) => {
   });
 });
 
-// ฟังก์ชันส่งภาพทั้งหมดไปให้ AI วิเคราะห์รวบยอดทีเดียว
 async function processAndReplyImages(client, userId, base64Images) {
   try {
     const now = new Date();
@@ -88,7 +81,7 @@ async function processAndReplyImages(client, userId, base64Images) {
 3. ใช้ภาษาไทยที่เป็นทางการ สละสลวย จัดรูปแบบหัวข้อและย่อหน้าให้อ่านง่ายเป็นระเบียบ
 
 ใช้โครงสร้างรายงานตามรูปแบบนี้:
-${thaiDateStr} สรุปภาพรวมสถานการณ์น้ำและปริมาณฝนในพื้นที่ (อจากภาพถ่ายหน้าจอ ${base64Images.length} ภาพที่รวบรวมได้)
+${thaiDateStr} สรุปภาพรวมสถานการณ์น้ำและปริมาณฝนในพื้นที่ (อิงจากภาพถ่ายหน้าจอ ${base64Images.length} ภาพที่รวบรวมได้)
 
 * **สถานการณ์ระดับน้ำและจุดที่ล้นตลิ่ง:**
   * [ดึงชื่อสถานีและตัวเลขระดับน้ำจริงจากในภาพมาสรุป]
@@ -100,7 +93,6 @@ ${thaiDateStr} สรุปภาพรวมสถานการณ์น้�
 บทสรุปการบริหารจัดการน้ำและแนวทางการปฏิบัติงาน:
 ข้อเสนอแนะและแนวทางปฏิบัติสำหรับเจ้าหน้าที่ในการเฝ้าระวังจุดเสี่ยงจากข้อมูลในภาพ`;
 
-    // เตรียมโครงสร้าง Multimodal ส่งหลายรูปพร้อมกันให้ Groq (หรือ OpenAI Compatible)
     const contentPayload = [{ type: "text", text: systemPrompt }];
     
     base64Images.forEach((imgBase64) => {
@@ -119,9 +111,9 @@ ${thaiDateStr} สรุปภาพรวมสถานการณ์น้�
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: "meta/llama-3.2-90b-vision-instruct", // หรือใช้โมเดลวิสัยทัศน์ปัจจุบันที่รองรับ /
+        model: "qwen/qwen3.8-27b", // ใช้โมเดลปัจจุบันที่รองรับวิสัยทัศน์
         messages: [{ role: "user", content: contentPayload }],
-        temperature: 0.1 // ตั้งค่าต่ำสุดเพื่อลดการคิดเลขมั่วหรือแต่งเติมข้อความ
+        temperature: 0.1
       })
     });
 
@@ -139,7 +131,7 @@ ${thaiDateStr} สรุปภาพรวมสถานการณ์น้�
     console.error("Error in batch processing:", error);
     await client.pushMessage(userId, {
       type: 'text',
-      text: '⚠ เกิดข้อผิดพลาดในการประมวลผลชุดภาพถ่าย กรุณาลองใหม่อีกครั้ง'
+      text: '⚠ เกิดข้อผิดพลาดในการประมวลผลชุดภาพถ่าย กรุณาลองส่งใหม่อีกครั้ง'
     });
   }
 }
