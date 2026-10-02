@@ -16,7 +16,7 @@ const userImageBuffers = {};
 const userTimeouts = {};
 
 app.post('/webhook', line.middleware(lineConfig), (req, res) => {
-  res.status(200).end();
+  res.status(200).end(); // ตอบรับ LINE Server ทันทีเพื่อป้องกัน Timeout
 
   req.body.events.forEach(async (event) => {
     if (event.type === 'message' && event.message.type === 'image') {
@@ -38,12 +38,16 @@ app.post('/webhook', line.middleware(lineConfig), (req, res) => {
           userImageBuffers[userId] = [];
         }
 
+        // เก็บภาพลงกองกลาง (รองรับสูงสุด 10 ภาพ)
         userImageBuffers[userId].push(base64Image);
+        if (userImageBuffers[userId].length > 10) {
+          userImageBuffers[userId] = userImageBuffers[userId].slice(-10);
+        }
 
         if (userImageBuffers[userId].length === 1) {
           await client.pushMessage(userId, {
             type: 'text',
-            text: '🔄 ระบบกำลังรวบรวมภาพถ่ายที่คุณส่งมาทั้งหมด กรุณารอสักครู่...'
+            text: '🔄 ระบบกำลังรวบรวมภาพถ่ายของคุณ (รองรับสูงสุด 10 ภาพ) กรุณารอสักครู่...'
           });
         }
 
@@ -51,12 +55,13 @@ app.post('/webhook', line.middleware(lineConfig), (req, res) => {
           clearTimeout(userTimeouts[userId]);
         }
 
+        // รอ 5 วินาทีหลังจากส่งรูปสุดท้ายครบ
         userTimeouts[userId] = setTimeout(async () => {
           const imagesToProcess = userImageBuffers[userId];
           delete userImageBuffers[userId];
           delete userTimeouts[userId];
 
-          await processAndReplyImages(client, userId, imagesToProcess);
+          await processBatchImages(client, userId, imagesToProcess);
         }, 5000);
 
       } catch (err) {
@@ -66,65 +71,98 @@ app.post('/webhook', line.middleware(lineConfig), (req, res) => {
   });
 });
 
-async function processAndReplyImages(client, userId, base64Images) {
+// ฟังก์ชันซอยรูปภาพออกเป็นกลุ่มละ 3 รูป แล้วส่งประมวลผล (ควบคุมไม่ให้ AI มั่วข้อมูล)
+async function processBatchImages(client, userId, allImages) {
   try {
     const now = new Date();
     const yearBE = now.getFullYear() + 543;
     const months = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
     const thaiDateStr = `วันที่ ${now.getDate()} ${months[now.getMonth()]} พ.ศ. ${yearBE}`;
 
-    const systemPrompt = `คุณคือผู้เชี่ยวชาญด้านวิศวกรรมทรัพยากรน้ำและอุทกวิทยา หน้าที่ของคุณคือนำ "ภาพถ่ายหน้าจอข้อมูลสถานการณ์น้ำทั้งหมด ${base64Images.length} ภาพที่แนบมานี้" มาวิเคราะห์รวมกันเป็นรายงานฉบับเดียว
+    const imageChunks = [];
+    for (let i = 0; i < allImages.length; i += 3) {
+      imageChunks.push(allImages.slice(i, i + 3));
+    }
 
-⚠️ **กฎเหล็กสำคัญที่สุด (ห้ามฝ่าฝืนเด็ดขาด):**
-1. **ห้ามแต่งเติมหรือกุตัวเลขขึ้นมาเองเด็ดขาด:** ต้องดึงเฉพาะชื่อสถานี ตัวเลขระดับน้ำ ระดับตลิ่ง และปริมาณฝน (มม.) ที่ปรากฏอยู่จริงในภาพถ่ายทุกภาพเท่านั้น หากภาพไหนไม่มีข้อมูลตัวเลข ห้ามคาดเดา
-2. ระบุวันที่ในรายงานคือ **${thaiDateStr}** เป็นภาษาไทยทั้งหมด
-3. ใช้ภาษาไทยที่เป็นทางการ สละสลวย จัดรูปแบบหัวข้อและย่อหน้าให้อ่านง่ายเป็นระเบียบ
+    let partialReports = [];
 
-ใช้โครงสร้างรายงานตามรูปแบบนี้:
-${thaiDateStr} สรุปภาพรวมสถานการณ์น้ำและปริมาณฝนในพื้นที่ (อิงจากภาพถ่ายหน้าจอ ${base64Images.length} ภาพที่รวบรวมได้)
+    for (let index = 0; index < imageChunks.length; index++) {
+      const chunk = imageChunks[index];
+      
+      const chunkPrompt = `คุณคือผู้เชี่ยวชาญด้านวิศวกรรมทรัพยากรน้ำ หน้าที่ของคุณคืออ่านตัวเลขและข้อความจาก "ภาพถ่ายหน้าจอ" ที่แนบมานี้เท่านั้น
+
+🚨 **กฎเหล็กเพื่อป้องกันการมั่วข้อมูล (Strict Rules):**
+1. **ห้ามมั่ว ห้ามแต่งเติม ห้ามดึงข้อมูลภายนอก:** ห้ามใส่ชื่อจังหวัด ลุ่มน้ำ หรือสถานีใดๆ ที่ไม่อยู่ในรูปภาพเด็ดขาด (เช่น ห้ามใส่ กาญจนบุรี อุทัยธานี หรือพื้นที่อื่นๆ ถ้าในรูปไม่มี)
+2. ดึงเฉพาะชื่อสถานี ตัวเลขระดับน้ำ ระดับตลิ่ง และปริมาณฝนที่ **ปรากฏอยู่จริงด้วยตาเปล่าในรูปภาพ** เท่านั้น
+3. หากในรูปภาพพูดถึงลุ่มน้ำบางปะกงหรือพื้นที่ใด ให้ระบุเฉพาะพื้นที่นั้นตามจริง หากไม่แน่ใจให้บอกว่าไม่มีข้อมูลในภาพ
+
+ช่วยสรุปข้อมูลเฉพาะตัวเลขและชื่อสถานีที่พบในภาพชุดนี้แบบสั้นๆ และตรงตามความจริงที่สุด:`;
+
+      const contentPayload = [{ type: "text", text: chunkPrompt }];
+      chunk.forEach((imgBase64) => {
+        contentPayload.push({
+          type: "image_url",
+          image_url: { url: `data:image/jpeg;base64,${imgBase64}` }
+        });
+      });
+
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: "qwen/qwen3.8-27b",
+          messages: [{ role: "user", content: contentPayload }],
+          temperature: 0.0 // ตั้งค่าเป็น 0.0 เพื่อบังคับให้ตอบตามภาพจริง 100% ห้ามคิดเอง
+        })
+      });
+
+      const data = await response.json();
+      const reportPart = data.choices?.[0]?.message?.content;
+      if (reportPart) {
+        partialReports.push(reportPart);
+      }
+    }
+
+    const combinedContent = partialReports.join("\n\n");
+
+    const finalReportPrompt = `คุณคือนักวิเคราะห์ข้อมูลทรัพยากรน้ำ นำข้อมูลที่สกัดได้จากภาพถ่ายจริงด้านล่างนี้ มาเรียบเรียงเป็นรายงานสถานการณ์น้ำทางการ **โดยห้ามใส่ชื่อจังหวัด ลุ่มน้ำ หรือสถานที่ใดๆ ที่นอกเหนือจากข้อมูลดิบด้านล่างนี้เด็ดขาด**
+
+วันที่รายงาน: ${thaiDateStr}
+ข้อมูลดิบที่อ่านได้จากภาพถ่ายจริงทั้งหมด:
+${combinedContent}
+
+จัดรูปแบบรายงานให้อ่านง่าย เป็นทางการ ดังนี้:
+${thaiDateStr} สรุปรายงานสถานการณ์น้ำและปริมาณฝน (จากภาพถ่ายหน้าจอ ${allImages.length} ภาพ)
 
 * **สถานการณ์ระดับน้ำและจุดที่ล้นตลิ่ง:**
-  * [ดึงชื่อสถานีและตัวเลขระดับน้ำจริงจากในภาพมาสรุป]
+  * [สรุปเฉพาะชื่อสถานีและตัวเลขจากข้อมูลดิบด้านบนเท่านั้น]
 * **ปริมาณฝนสะสม 24 ชั่วโมง:**
-  * [ดึงตัวเลขปริมาณฝนจริงจากในภาพมาสรุป]
+  * [สรุปเฉพาะตัวเลขปริมาณฝนจากข้อมูลดิบด้านบนเท่านั้น]
 * **แนวโน้มระดับน้ำและการคาดการณ์:**
-  * ระดับน้ำในภาพรวมและแนวโน้มการเปลี่ยนแปลง
+  * [สรุปแนวโน้มตามข้อมูลที่มี ห้ามแต่งเพิ่ม]`;
 
-บทสรุปการบริหารจัดการน้ำและแนวทางการปฏิบัติงาน:
-ข้อเสนอแนะและแนวทางปฏิบัติสำหรับเจ้าหน้าที่ในการเฝ้าระวังจุดเสี่ยงจากข้อมูลในภาพ`;
-
-    const contentPayload = [{ type: "text", text: systemPrompt }];
-    
-    base64Images.forEach((imgBase64) => {
-      contentPayload.push({
-        type: "image_url",
-        image_url: {
-          url: `data:image/jpeg;base64,${imgBase64}`
-        }
-      });
-    });
-
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const finalResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${GROQ_API_KEY}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: "qwen/qwen3.8-27b", // ใช้โมเดลปัจจุบันที่รองรับวิสัยทัศน์
-        messages: [{ role: "user", content: contentPayload }],
-        temperature: 0.1
+        model: "qwen/qwen3.8-27b",
+        messages: [{ role: "user", content: finalReportPrompt }],
+        temperature: 0.0 // ล็อกค่าความแม่นยำสูงสุด ห้ามแต่งเติม
       })
     });
 
-    const data = await response.json();
-    console.log("Groq Batch Response:", JSON.stringify(data));
-
-    const aiReport = data.choices?.[0]?.message?.content || "⚠ ไม่สามารถวิเคราะห์ข้อมูลจากภาพได้";
+    const finalData = await finalResponse.json();
+    const finalReport = finalData.choices?.[0]?.message?.content || combinedContent;
 
     await client.pushMessage(userId, {
       type: 'text',
-      text: aiReport
+      text: finalReport
     });
 
   } catch (error) {
@@ -135,7 +173,6 @@ ${thaiDateStr} สรุปภาพรวมสถานการณ์น้�
     });
   }
 }
-
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
