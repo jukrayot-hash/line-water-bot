@@ -119,7 +119,7 @@ ${thaiDateStr} สรุปภาพรวมสถานการณ์น้�
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: "llama-3.2-90b-vision-preview", // ใช้รุ่นใหญ่ 90B Vision ที่รองรับหลายรูปและวิเคราะห์แม่นยำสูง
+        model: "meta/llama-3.2-90b-vision-instruct", // หรือใช้โมเดลวิสัยทัศน์ปัจจุบันที่รองรับ /
         messages: [{ role: "user", content: contentPayload }],
         temperature: 0.1 // ตั้งค่าต่ำสุดเพื่อลดการคิดเลขมั่วหรือแต่งเติมข้อความ
       })
