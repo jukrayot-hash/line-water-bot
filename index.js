@@ -7,7 +7,8 @@ const lineConfig = {
   channelSecret: "8799e485fb872e777415e818f303c5cf"
 };
 
-const GEMINI_API_KEY = "AQ.Ab8RN6KpKaGGr247eG00RSS_4EM7S9_RBo7W2Qeq8N4o3I6haA";
+// ⚠️ หมายเหตุ: อย่าลืมเปลี่ยนเป็น API Key จริงที่ขึ้นต้นด้วย "AIzaSy..." จาก Google AI Studio
+const GEMINI_API_KEY = "AQ.Ab8RN6JOkhfjxgVCfS5lbwIMXJ3S2LZZ8uc56JaB_PkKq7GjHg";
 
 const app = express();
 
@@ -73,33 +74,57 @@ ${thaiDateStr} สรุปภาพรวมสถานการณ์น้�
 
 บทสรุปการบริหารจัดการน้ำและแนวทางการปฏิบัติงานในพื้นที่สำหรับเจ้าหน้าที่ เน้นย้ำให้หน่วยงานและเจ้าหน้าที่ผู้ปฏิบัติงานในพื้นที่ติดตามสถานการณ์น้ำและปริมาณฝนสะสมอย่างใกล้ชิดตลอด 24 ชั่วโมง โดยเฉพาะในพื้นที่ที่มีฝนสะสมเกิน 50 มิลลิเมตร พร้อมทั้งตรวจสอบความพร้อมของเครื่องมือ อุปกรณ์ระบายน้ำ และระบบเตือนภัยให้พร้อมใช้งาน เพื่อให้สามารถแจ้งเตือนประชาชนในพื้นที่เสี่ยงภัยริมลำน้ำได้อย่างทันท่วงทีและมีประสิทธิภาพสูงสุด`;
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-    
-    const aiResponse = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { text: systemPrompt },
+    // ระบบวนลูปทดสอบโมเดลสำรองอัตโนมัติ (Fallback Loop)
+    const candidateModels = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"];
+    let aiReport = null;
+
+    for (let m = 0; m < candidateModels.length; m++) {
+      const model = candidateModels[m];
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+
+      try {
+        console.log(`กำลังลองส่งข้อมูลด้วยโมเดล: ${model}`);
+        
+        const aiResponse = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
               {
-                inlineData: {
-                  mimeType: "image/jpeg",
-                  data: base64Image
-                }
+                role: "user",
+                parts: [
+                  { text: systemPrompt },
+                  {
+                    inlineData: {
+                      mimeType: "image/jpeg",
+                      data: base64Image
+                    }
+                  }
+                ]
               }
             ]
-          }
-        ]
-      })
-    });
+          })
+        });
 
-    const aiData = await aiResponse.json();
-    console.log("Gemini Response:", JSON.stringify(aiData));
-    
-    const aiReport = aiData.candidates?.[0]?.content?.parts?.[0]?.text || "⚠ ไม่สามารถวิเคราะห์ข้อมูลจากภาพได้ (AI ไม่ส่งข้อมูลกลับมา)";
+        const aiData = await aiResponse.json();
+        
+        if (aiData.candidates && aiData.candidates[0] && aiData.candidates[0].content) {
+          aiReport = aiData.candidates[0].content.parts[0].text;
+          console.log(`สำเร็จ! ใช้โมเดล: ${model}`);
+          break;
+        } else {
+          console.log(`โมเดล ${model} ตอบกลับไม่สมบูรณ์:`, JSON.stringify(aiData));
+        }
+      } catch (e) {
+        console.error(`Model ${model} error:`, e.message);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    if (!aiReport) {
+      aiReport = "⚠ ไม่สามารถวิเคราะห์ข้อมูลจากภาพได้ (AI ไม่ส่งข้อมูลกลับมา)";
+    }
 
     await client.pushMessage(event.source.userId, {
       type: 'text',
