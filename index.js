@@ -4,7 +4,7 @@ const fetch = require('node-fetch');
 
 const lineConfig = {
   channelAccessToken: "pikOSiC2zLbWGKEgVC4V+mdBd90Ly8wXYy4lNtzwvDJaFBCCaxJ3pP2Baz9URzpZ4xLQ3slkGEdkdVCxRQcB6/OjWrbNlrnjp5cgwECvjgjyUtA9nyIzoRuj62AS2ljDQ3Kun5Oo8NYKjamuei1OrAdB04t89/1O/w1cDnyilFU=",
-  channelSecret: "YOUR_LINE_CHANNEL_SECRET" // ใส่ Channel Secret ของคุณ
+  channelSecret: "8799e485fb872e777415e818f303c5cf" // ใส่ Channel Secret ของคุณ
 };
 
 const GEMINI_API_KEY = "AQ.Ab8RN6JR_GBqd-GNiir4e5xw1wE-a8C87jTpEHt5t7yZnLyNXg";
