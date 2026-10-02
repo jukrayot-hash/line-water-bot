@@ -7,7 +7,7 @@ const lineConfig = {
   channelSecret: "8799e485fb872e777415e818f303c5cf" // ใส่ Channel Secret ของคุณ
 };
 
-const GEMINI_API_KEY = "AQ.Ab8RN6JR_GBqd-GNiir4e5xw1wE-a8C87jTpEHt5t7yZnLyNXg";
+const GEMINI_API_KEY = "AQ.Ab8RN6KyC29SCzZI7bdqS46zqtW8GNf-qOjnT-LKZfaoAmo5SA";
 
 const app = express();
 
@@ -74,38 +74,33 @@ ${thaiDateStr} สรุปภาพรวมสถานการณ์น้�
 บทสรุปการบริหารจัดการน้ำและแนวทางการปฏิบัติงานในพื้นที่สำหรับเจ้าหน้าที่ เน้นย้ำให้หน่วยงานและเจ้าหน้าที่ผู้ปฏิบัติงานในพื้นที่ติดตามสถานการณ์น้ำและปริมาณฝนสะสมอย่างใกล้ชิดตลอด 24 ชั่วโมง โดยเฉพาะในพื้นที่ที่มีฝนสะสมเกิน 50 มิลลิเมตร พร้อมทั้งตรวจสอบความพร้อมของเครื่องมือ อุปกรณ์ระบายน้ำ และระบบเตือนภัยให้พร้อมใช้งาน เพื่อให้สามารถแจ้งเตือนประชาชนในพื้นที่เสี่ยงภัยริมลำน้ำได้อย่างทันท่วงทีและมีประสิทธิภาพสูงสุด`;
 
    // เปลี่ยนมาใช้โมเดล gemini-1.5-flash ที่เสถียรและรองรับการอ่านภาพ
+// ยิงตรงหา Gemini API แบบกำหนดโครงสร้าง parts ให้ถูกต้องชัดเจน
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    
     const aiResponse = await fetch(geminiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: systemPrompt },
-            { inline_data: { mime_type: 'image/jpeg', data: base64Image } }
-          ]
-        }]
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: systemPrompt },
+              {
+                inlineData: {
+                  mimeType: "image/jpeg",
+                  data: base64Image
+                }
+              }
+            ]
+          }
+        ]
       })
     });
 
     const aiData = await aiResponse.json();
-    const aiReport = aiData.candidates?.[0]?.content?.parts?.[0]?.text || "⚠ ไม่สามารถวิเคราะห์ข้อมูลจากภาพได้";
-
-    await client.pushMessage(event.source.userId, {
-      type: 'text',
-      text: aiReport
-    });
-
-  } catch (error) {
-    console.error("Error processing image:", error);
-    await client.pushMessage(event.source.userId, {
-      type: 'text',
-      text: '⚠ เกิดข้อผิดพลาดในการประมวลผลภาพถ่าย กรุณาลองส่งใหม่อีกครั้ง'
-    });
-  }
-}
-
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
+    
+    // ตรวจสอบข้อมูลที่ AI ตอบกลับมาเพื่อความปลอดภัย
+    console.log("Gemini Response:", JSON.stringify(aiData)); // ดู Log ได้ใน Render Dashboard หากยังมีปัญหา
+    
+    const aiReport = aiData.candidates?.[0]?.content?.parts?.[0]?.text || "⚠ ไม่สามารถวิเคราะห์ข้อมูลจากภาพได้ (AI ไม่ส่งข้อมูลกลับมา)";
