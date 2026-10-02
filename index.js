@@ -4,10 +4,10 @@ const fetch = require('node-fetch');
 
 const lineConfig = {
   channelAccessToken: "pikOSiC2zLbWGKEgVC4V+mdBd90Ly8wXYy4lNtzwvDJaFBCCaxJ3pP2Baz9URzpZ4xLQ3slkGEdkdVCxRQcB6/OjWrbNlrnjp5cgwECvjgjyUtA9nyIzoRuj62AS2ljDQ3Kun5Oo8NYKjamuei1OrAdB04t89/1O/w1cDnyilFU=",
-  channelSecret: "8799e485fb872e777415e818f303c5cf" // ใส่ Channel Secret ของคุณ
+  channelSecret: "8799e485fb872e777415e818f303c5cf"
 };
 
-const GEMINI_API_KEY = "AQ.Ab8RN6KyC29SCzZI7bdqS46zqtW8GNf-qOjnT-LKZfaoAmo5SA";
+const GEMINI_API_KEY = "AQ.Ab8RN6KpKaGGr247eG00RSS_4EM7S9_RBo7W2Qeq8N4o3I6haA";
 
 const app = express();
 
@@ -73,8 +73,6 @@ ${thaiDateStr} สรุปภาพรวมสถานการณ์น้�
 
 บทสรุปการบริหารจัดการน้ำและแนวทางการปฏิบัติงานในพื้นที่สำหรับเจ้าหน้าที่ เน้นย้ำให้หน่วยงานและเจ้าหน้าที่ผู้ปฏิบัติงานในพื้นที่ติดตามสถานการณ์น้ำและปริมาณฝนสะสมอย่างใกล้ชิดตลอด 24 ชั่วโมง โดยเฉพาะในพื้นที่ที่มีฝนสะสมเกิน 50 มิลลิเมตร พร้อมทั้งตรวจสอบความพร้อมของเครื่องมือ อุปกรณ์ระบายน้ำ และระบบเตือนภัยให้พร้อมใช้งาน เพื่อให้สามารถแจ้งเตือนประชาชนในพื้นที่เสี่ยงภัยริมลำน้ำได้อย่างทันท่วงทีและมีประสิทธิภาพสูงสุด`;
 
-   // เปลี่ยนมาใช้โมเดล gemini-1.5-flash ที่เสถียรและรองรับการอ่านภาพ
-// ยิงตรงหา Gemini API แบบกำหนดโครงสร้าง parts ให้ถูกต้องชัดเจน
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
     
     const aiResponse = await fetch(geminiUrl, {
@@ -99,8 +97,25 @@ ${thaiDateStr} สรุปภาพรวมสถานการณ์น้�
     });
 
     const aiData = await aiResponse.json();
-    
-    // ตรวจสอบข้อมูลที่ AI ตอบกลับมาเพื่อความปลอดภัย
-    console.log("Gemini Response:", JSON.stringify(aiData)); // ดู Log ได้ใน Render Dashboard หากยังมีปัญหา
+    console.log("Gemini Response:", JSON.stringify(aiData));
     
     const aiReport = aiData.candidates?.[0]?.content?.parts?.[0]?.text || "⚠ ไม่สามารถวิเคราะห์ข้อมูลจากภาพได้ (AI ไม่ส่งข้อมูลกลับมา)";
+
+    await client.pushMessage(event.source.userId, {
+      type: 'text',
+      text: aiReport
+    });
+
+  } catch (error) {
+    console.error("Error processing image:", error);
+    await client.pushMessage(event.source.userId, {
+      type: 'text',
+      text: '⚠ เกิดข้อผิดพลาดในการประมวลผลภาพถ่าย กรุณาลองส่งใหม่อีกครั้ง'
+    });
+  }
+}
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+});
